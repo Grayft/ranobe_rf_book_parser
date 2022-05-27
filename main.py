@@ -12,11 +12,14 @@ URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
 PARAMS = []
 
 
-def get_chapters_file_name(book_json, num_chapter_start, num_chapter_end):
-    chapters_file_name = book_json['props']['pageProps']['book'][
-                             'title'] + '. ' + str(
-        num_chapter_start) + '-' + str(num_chapter_end)
-    return chapters_file_name
+def get_chapters_file_name(book_name, num_chapter_start, num_chapter_end):
+    """Формирует название для файла с главами"""
+    if num_chapter_end - num_chapter_start > 1:
+        return f'{book_name}. Главы {num_chapter_start}-{num_chapter_end}.'
+    elif num_chapter_end - num_chapter_start == 0:
+        return f'{book_name}. Глава {num_chapter_start}.'
+    else:
+        raise Exception("Номер выгружаемой стартовой главы больше конечной!")
 
 
 def get_parsing_url_dict(chapters_json, chapter_start, chapter_end):
@@ -55,14 +58,14 @@ def get_site_content(url):
 
         num_parsing_chapter_start = 1
         num_parsing_chapter_end = 10
-        parsing_chapters_url_list = get_parsing_url_dict(
+        parsing_chapters_url_dict = get_parsing_url_dict(
             book_json['props']['pageProps']['book']['chapters'],
             num_parsing_chapter_start, num_parsing_chapter_end)
 
-        parsing_chapter_slice = slice(num_parsing_chapter_start - 1,
-                                      num_parsing_chapter_end)
         chapters_file_name = get_chapters_file_name(
-            book_json, num_parsing_chapter_start, num_parsing_chapter_end)
+            book_json['props']['pageProps']['book']['title'],
+            num_parsing_chapter_start,
+            num_parsing_chapter_end)
         # with open('chapters_content.txt', 'w') as file:
         #     for chapter in book_json['props']['pageProps']['book'][
         #         'chapters'][parsing_chapter_slice]:
