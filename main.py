@@ -13,8 +13,9 @@ URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
 PARAMS = []
 
 
-def get_chapters_file_name(book_name, load_params) -> str:
+def get_chapters_file_name(load_params, book_name) -> str:
     """Формирует название для файла с главами"""
+
     num_start = load_params['num_chapter_start']
     num_end = load_params['num_chapter_end']
 
@@ -58,7 +59,7 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
     return get_chosen_url_dict(load_params, book_chapters_url_dict)
 
 
-def get_finding_tag_data(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
+def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
     """В сдержимом ищет нужный тег с аттрибутами и выводит его содержание"""
     soup = BeautifulSoup(content, features='html.parser')
     data = soup.find(name=tag, attrs=attrs)
@@ -66,25 +67,35 @@ def get_finding_tag_data(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
 
 
 def get_book_json(content):
-    book_data = get_finding_tag_data(content, 'script',
-                                     attrs={'id': '__NEXT_DATA__'})
-    return loads(book_data)
+    """Возвращает json, в котором хранится данные о книге, главах и много
+    всего другого"""
+
+    if content:
+        book_data = get_finding_tag_text(content, 'script',
+                                         attrs={'id': '__NEXT_DATA__'})
+        return loads(book_data)
+    raise Exception('Пустой content а странице книги!')
 
 
-def get_chapter_text(part_url: str) -> str:
+def get_chapter_text(num_chapter, part_url: str) -> str:
     """Функция парсит текст главы книги"""
 
     response = requests.get(url=URLS.get('site')[:-1] + part_url)
     if response.status_code == 200:
-        title = get_finding_tag_data(response.content, 'h1',
-                                     attrs={
-                                         'class': 'font-medium text-2xl md:text-3xl pb-3'})
-        text = get_finding_tag_data(response.content, 'div',
-                                    attrs={
-                                        'class': 'overflow-hidden text-base leading-5 sm:text-lg content sm:leading-6 pb-6 prose text-justify max-w-none text-black-0 dark:text-[#aaa]'}
-                                    )
+        title = get_finding_tag_text(
+            response.content, 'h1',
+            attrs={'class': 'font-medium text-2xl md:text-3xl pb-3'}
+        )
+        text = get_finding_tag_text(
+            response.content, 'div',
+            attrs={'class': 'overflow-hidden text-base leading-5 sm:text-lg '
+                            'content sm:leading-6 pb-6 prose text-justify '
+                            'max-w-none text-black-0 dark:text-[#aaa]'}
+        )
         if text:
             return f'{title}\n{text}\n\n'
+    raise Exception(f'Не удалось загрузить страницу c главой {num_chapter}!\n'
+                    f'URL:  {response.url}')
 
 
 def get_chapters_text_dict(load_params, book_json):
@@ -97,7 +108,7 @@ def get_chapters_text_dict(load_params, book_json):
     chapters_text_dict = {}
     for num_chapter in parsing_url_dict.keys():
         chapters_text_dict[num_chapter] = get_chapter_text(
-            parsing_url_dict.get(num_chapter))
+            num_chapter, parsing_url_dict.get(num_chapter))
         sleep(0.05)
     return chapters_text_dict
 
@@ -105,7 +116,7 @@ def get_chapters_text_dict(load_params, book_json):
 def save_chapters_to_file(load_params, book_json, chapters_dict):
     """Функция сохраняет текст глав в файл"""
     chapters_file_name = get_chapters_file_name(
-        book_json['props']['pageProps']['book']['title'], load_params)
+        load_params, book_json['props']['pageProps']['book']['title'])
 
     with open(chapters_file_name, 'w') as result_file:
         for num_chapter in sorted(chapters_dict.keys()):
@@ -124,6 +135,8 @@ def download_book_chapters(load_params: dict):
         book_json = get_book_json(response.content)
         chapters_text_dict = get_chapters_text_dict(load_params, book_json)
         save_chapters_to_file(load_params, book_json, chapters_text_dict)
+    else:
+        raise Exception('Не удалось загрузить страницу книги!')
 
 
 def main():
