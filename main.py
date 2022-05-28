@@ -13,18 +13,22 @@ URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
 PARAMS = []
 
 
-def get_chapters_file_name(load_params, book_name) -> str:
-    """Формирует название для файла с главами"""
+def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
+    """В сдержимом ищет нужный тег с аттрибутами и выводит его содержание"""
+    soup = BeautifulSoup(content, features='html.parser')
+    data = soup.find(name=tag, attrs=attrs)
+    return data.get_text()
 
-    num_start = load_params['num_chapter_start']
-    num_end = load_params['num_chapter_end']
 
-    if num_end - num_start > 1:
-        return f"{book_name}. Главы {num_start}-{num_end}.txt"
-    elif num_end - num_start == 0:
-        return f"{book_name}. Глава {num_start}.txt"
-    else:
-        raise Exception("Номер выгружаемой стартовой главы больше конечной!")
+def get_book_json(content):
+    """Возвращает json, в котором хранится данные о книге, главах и много
+    всего другого"""
+
+    if content:
+        book_data = get_finding_tag_text(content, 'script',
+                                         attrs={'id': '__NEXT_DATA__'})
+        return loads(book_data)
+    raise Exception('Пустой content а странице книги!')
 
 
 def get_chosen_url_dict(load_params: dict, chapters: dict):
@@ -57,24 +61,6 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
             raise Exception('Номер главы не найден при парсинге!')
 
     return get_chosen_url_dict(load_params, book_chapters_url_dict)
-
-
-def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
-    """В сдержимом ищет нужный тег с аттрибутами и выводит его содержание"""
-    soup = BeautifulSoup(content, features='html.parser')
-    data = soup.find(name=tag, attrs=attrs)
-    return data.get_text()
-
-
-def get_book_json(content):
-    """Возвращает json, в котором хранится данные о книге, главах и много
-    всего другого"""
-
-    if content:
-        book_data = get_finding_tag_text(content, 'script',
-                                         attrs={'id': '__NEXT_DATA__'})
-        return loads(book_data)
-    raise Exception('Пустой content а странице книги!')
 
 
 def get_chapter_text(num_chapter, part_url: str) -> str:
@@ -111,6 +97,20 @@ def get_chapters_text_dict(load_params, book_json):
             num_chapter, parsing_url_dict.get(num_chapter))
         sleep(0.05)
     return chapters_text_dict
+
+
+def get_chapters_file_name(load_params, book_name) -> str:
+    """Формирует название для файла с главами"""
+
+    num_start = load_params['num_chapter_start']
+    num_end = load_params['num_chapter_end']
+
+    if num_end - num_start > 1:
+        return f"{book_name}. Главы {num_start}-{num_end}.txt"
+    elif num_end - num_start == 0:
+        return f"{book_name}. Глава {num_start}.txt"
+    else:
+        raise Exception("Номер выгружаемой стартовой главы больше конечной!")
 
 
 def save_chapters_to_file(load_params, book_json, chapters_dict):
