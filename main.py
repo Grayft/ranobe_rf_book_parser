@@ -11,9 +11,9 @@ import os
 # 'https://ранобэ.рф'
 URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/'}
 URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
-URL = 'https://xn--80ac9aeh6f.xn--p1ai/arifureta-cilyneyshiy-remeslennik-v-mire-ln'
+URL = 'https://xn--80ac9aeh6f.xn--p1ai/ubegaya-ot-geroya'
 # URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov/glava-1-silyneyshaya-sistema-ubiystva-drakonov'
-PARAMS = []
+HEADERS = []
 
 
 def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
@@ -24,7 +24,7 @@ def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
 
 
 @logger.catch(reraise=True)
-def get_book_json(content):
+def get_book_json(content: AnyStr) -> dict:
     """Возвращает json, в котором хранится данные о книге, главах и много
     всего другого"""
 
@@ -32,13 +32,13 @@ def get_book_json(content):
     if content:
         book_data = get_finding_tag_text(content, 'script',
                                          attrs={'id': '__NEXT_DATA__'})
-        with open('book_json.arifureta.txt', 'w') as f:
-            f.write(book_data)
         return loads(book_data)
     raise Exception('Пустой content а странице книги!')
 
 
 logger.catch(reraise=True)
+
+
 def get_chosen_url_dict(load_params: dict, chapters: dict) -> dict:
     """Возвращает словарь с url нужных глав из всех глав книги
         dict = {номер главы: url}
@@ -48,8 +48,9 @@ def get_chosen_url_dict(load_params: dict, chapters: dict) -> dict:
     for num_chapter, chapter_data in chapters.items():
         if load_params['num_chapter_start'] <= num_chapter <= load_params['num_chapter_end']:
             if not chapter_data['isaccessible']:
-                raise Exception(f'Нельзя спарсить, т.к. глава {num_chapter} имеет ограниченный доступ.')    
-            
+                raise Exception(
+                    f'Нельзя спарсить, т.к. глава {num_chapter} имеет ограниченный доступ.')
+
             chosen_chapters_url_dict[num_chapter] = chapter_data['url']
 
     return chosen_chapters_url_dict
@@ -77,7 +78,12 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
                 'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
             }
         elif ch['title']:
-            num_chapter = int(re.search(r'\d+', ch['title']).group())
+            num_chapter = None
+            if 'пролог' in ch['title'].lower():
+                num_chapter = 0
+            else:
+                num_chapter = int(re.search(r'\d+', ch['title']).group())
+
             book_chapters_url_dict[num_chapter] = {
                 'url': ch['url'],
                 'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
@@ -89,6 +95,7 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
                 'url': ch['url'],
                 'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
             }
+
         else:
             raise Exception('Номер главы не найден при парсинге!')
 
@@ -96,7 +103,7 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
 
 
 @logger.catch(reraise=True)
-def get_chapter_text(num_chapter, part_url: str) -> str:
+def get_chapter_text(num_chapter: float, part_url: str) -> str:
     """Функция парсит текст главы книги"""
 
     response = requests.get(url=URLS.get('site')[:-1] + part_url)
@@ -111,13 +118,14 @@ def get_chapter_text(num_chapter, part_url: str) -> str:
                             'content sm:leading-6 pb-6 prose text-justify '
                             'max-w-none text-black-0 dark:text-[#aaa]'}
         )
+
         if text:
             return f'{title}\n{text}\n\n'
     raise Exception(f'Не удалось загрузить страницу c главой {num_chapter}!\n'
                     f'URL:  {response.url}')
 
 
-def get_chapters_text_dict(load_params, book_json):
+def get_chapters_text_dict(load_params: dict, book_json: dict) -> dict:
     """Парсит главы сайта по ссылкам из url_dict.
         Возвращает словарь dict = {номер главы: текст главы}"""
 
@@ -135,7 +143,7 @@ def get_chapters_text_dict(load_params, book_json):
 
 
 @logger.catch(reraise=True)
-def get_chapters_file_name(load_params, book_name) -> str:
+def get_chapters_file_name(load_params:dict , book_name: str) -> str:
     """Формирует название для файла с главами"""
 
     num_start = load_params['num_chapter_start']
@@ -149,7 +157,7 @@ def get_chapters_file_name(load_params, book_name) -> str:
         raise Exception("Номер выгружаемой стартовой главы больше конечной!")
 
 
-def save_chapters_to_file(load_params, book_json, chapters_dict):
+def save_chapters_to_file(load_params: dict, book_json: dict, chapters_dict: dict) -> None:
     """Функция сохраняет текст глав в файл"""
 
     logger.info('Сохранение результата в файл.')
@@ -162,7 +170,7 @@ def save_chapters_to_file(load_params, book_json, chapters_dict):
 
 
 @logger.catch(reraise=True)
-def download_book_chapters(load_params: dict):
+def download_book_chapters(load_params: dict) -> None:
     """Функция скачивает и сохраняет в файл главы книги.
         В качестве аргументов принимает ссылку на книгу, номер начальной и
         конечной главы. Скачивает все главы в этом промежутке, включая
@@ -195,8 +203,8 @@ if __name__ == '__main__':
     initiate_logging()
 
     load_params = {'url': URL,
-                   'num_chapter_start': 1,
-                   'num_chapter_end': 14}
+                   'num_chapter_start': 0,
+                   'num_chapter_end': 10}
 
     logger.info(f"\nПараметры:\n\
         URL: {load_params['url']}\n\
