@@ -11,6 +11,7 @@ import os
 # 'https://ранобэ.рф'
 URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/'}
 URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
+URL = 'https://xn--80ac9aeh6f.xn--p1ai/arifureta-cilyneyshiy-remeslennik-v-mire-ln'
 # URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov/glava-1-silyneyshaya-sistema-ubiystva-drakonov'
 PARAMS = []
 
@@ -26,43 +27,68 @@ def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
 def get_book_json(content):
     """Возвращает json, в котором хранится данные о книге, главах и много
     всего другого"""
-    
+
     logger.info('Парсинг данных о книге.')
     if content:
         book_data = get_finding_tag_text(content, 'script',
                                          attrs={'id': '__NEXT_DATA__'})
+        with open('book_json.arifureta.txt', 'w') as f:
+            f.write(book_data)
         return loads(book_data)
     raise Exception('Пустой content а странице книги!')
 
 
-def get_chosen_url_dict(load_params: dict, chapters: dict):
-    """Возвращает словарь с url нужных глав из всех глав книги"""
+logger.catch(reraise=True)
+def get_chosen_url_dict(load_params: dict, chapters: dict) -> dict:
+    """Возвращает словарь с url нужных глав из всех глав книги
+        dict = {номер главы: url}
+    """
 
-    num_chosen_chapters = set(
-        [num_chapter for num_chapter in range(load_params['num_chapter_start'],
-                                              load_params[
-                                                  'num_chapter_end'] + 1)])
-    chosen_chapters_url_dict = {i: url for i, url in chapters.items()
-                                if i in num_chosen_chapters}
+    chosen_chapters_url_dict = {}
+    for num_chapter, chapter_data in chapters.items():
+        if load_params['num_chapter_start'] <= num_chapter <= load_params['num_chapter_end']:
+            if not chapter_data['isaccessible']:
+                raise Exception(f'Нельзя спарсить, т.к. глава {num_chapter} имеет ограниченный доступ.')    
+            
+            chosen_chapters_url_dict[num_chapter] = chapter_data['url']
+
     return chosen_chapters_url_dict
 
 
 @logger.catch(reraise=True)
 def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
-    """Возвращает словарь url, выбранных глав
-       dict = {номер главы: url}"""
-    
+    """Возвращает словарь url и доступности для просмотра выбранных глав.
+
+       dict = {номер главы: {
+            'url': url, 
+            'isaccessible': True|False - флаг того, имеется ли доступ к тексту главы
+            }
+        }
+
+        Номер главы может быть десятичным числом. Пример:"50.2"
+        """
+
     logger.info('Отбор необходимых глав.')
     book_chapters_url_dict = {}
     for ch in chapters_json:
         if ch['chapterShortNumber']:
-            book_chapters_url_dict[ch['chapterShortNumber']] = ch['url']
+            book_chapters_url_dict[ch['chapterShortNumber']] = {
+                'url': ch['url'],
+                'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
+            }
         elif ch['title']:
             num_chapter = int(re.search(r'\d+', ch['title']).group())
-            book_chapters_url_dict[num_chapter] = ch['url']
+            book_chapters_url_dict[num_chapter] = {
+                'url': ch['url'],
+                'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
+            }
+
         elif ch['numberChapter']:
             num_chapter = int(re.search(r'\d+', ch['numberChapter']).group())
-            book_chapters_url_dict[num_chapter] = ch['url']
+            book_chapters_url_dict[num_chapter] = {
+                'url': ch['url'],
+                'isaccessible': not (ch['isDonate'] or ch['isSubscription'])
+            }
         else:
             raise Exception('Номер главы не найден при парсинге!')
 
@@ -170,7 +196,7 @@ if __name__ == '__main__':
 
     load_params = {'url': URL,
                    'num_chapter_start': 1,
-                   'num_chapter_end': 5}
+                   'num_chapter_end': 14}
 
     logger.info(f"\nПараметры:\n\
         URL: {load_params['url']}\n\
