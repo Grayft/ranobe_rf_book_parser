@@ -4,7 +4,9 @@ from json import loads, dumps
 from time import sleep
 import re
 from typing import AnyStr
-from collections import namedtuple
+from loguru import logger
+import os
+
 
 # 'https://ранобэ.рф'
 URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/'}
@@ -20,10 +22,12 @@ def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
     return data.get_text()
 
 
+@logger.catch(reraise=True)
 def get_book_json(content):
     """Возвращает json, в котором хранится данные о книге, главах и много
     всего другого"""
-
+    
+    logger.info('Парсинг данных о книге.')
     if content:
         book_data = get_finding_tag_text(content, 'script',
                                          attrs={'id': '__NEXT_DATA__'})
@@ -43,10 +47,12 @@ def get_chosen_url_dict(load_params: dict, chapters: dict):
     return chosen_chapters_url_dict
 
 
+@logger.catch(reraise=True)
 def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
     """Возвращает словарь url, выбранных глав
        dict = {номер главы: url}"""
-
+    
+    logger.info('Отбор необходимых глав.')
     book_chapters_url_dict = {}
     for ch in chapters_json:
         if ch['chapterShortNumber']:
@@ -63,6 +69,7 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
     return get_chosen_url_dict(load_params, book_chapters_url_dict)
 
 
+@logger.catch(reraise=True)
 def get_chapter_text(num_chapter, part_url: str) -> str:
     """Функция парсит текст главы книги"""
 
@@ -88,6 +95,7 @@ def get_chapters_text_dict(load_params, book_json):
     """Парсит главы сайта по ссылкам из url_dict.
         Возвращает словарь dict = {номер главы: текст главы}"""
 
+    logger.info('Начало парсинга глав.')
     parsing_url_dict = get_parsing_url_dict(
         load_params, book_json['props']['pageProps']['book']['chapters'])
 
@@ -96,9 +104,11 @@ def get_chapters_text_dict(load_params, book_json):
         chapters_text_dict[num_chapter] = get_chapter_text(
             num_chapter, parsing_url_dict.get(num_chapter))
         sleep(0.05)
+    logger.success('Конец парсинга глав.')
     return chapters_text_dict
 
 
+@logger.catch(reraise=True)
 def get_chapters_file_name(load_params, book_name) -> str:
     """Формирует название для файла с главами"""
 
@@ -115,6 +125,8 @@ def get_chapters_file_name(load_params, book_name) -> str:
 
 def save_chapters_to_file(load_params, book_json, chapters_dict):
     """Функция сохраняет текст глав в файл"""
+
+    logger.info('Сохранение результата в файл.')
     chapters_file_name = get_chapters_file_name(
         load_params, book_json['props']['pageProps']['book']['title'])
 
@@ -123,15 +135,16 @@ def save_chapters_to_file(load_params, book_json, chapters_dict):
             result_file.write(chapters_dict[num_chapter])
 
 
+@logger.catch(reraise=True)
 def download_book_chapters(load_params: dict):
     """Функция скачивает и сохраняет в файл главы книги.
         В качестве аргументов принимает ссылку на книгу, номер начальной и
         конечной главы. Скачивает все главы в этом промежутке, включая
         конечную главу.
     """
+    logger.info('Получение данных о книге.')
     response = requests.get(url=load_params['url'])
     if response.status_code == 200:
-        print('Connection: OK')
         book_json = get_book_json(response.content)
         chapters_text_dict = get_chapters_text_dict(load_params, book_json)
         save_chapters_to_file(load_params, book_json, chapters_text_dict)
@@ -139,14 +152,29 @@ def download_book_chapters(load_params: dict):
         raise Exception('Не удалось загрузить страницу книги!')
 
 
-def main():
-    """Point of enter"""
-    load_params = {'url': URL,
-                   'num_chapter_start': 1,
-                   'num_chapter_end': 5}
-    download_book_chapters(load_params)
-    print('Program: Ok')
+def initiate_logging() -> None:
+    """Инициирует логирование"""
+    log_folder = 'logs'
+    log_file = 'log_last_launch.log'
+    if not log_folder in os.listdir():
+        os.mkdir(log_folder)
+
+    with open(f'{log_folder}/{log_file}', 'w') as file:
+        pass
+
+    logger.add(f'{log_folder}/{log_file}')
 
 
 if __name__ == '__main__':
-    main()
+    initiate_logging()
+
+    load_params = {'url': URL,
+                   'num_chapter_start': 1,
+                   'num_chapter_end': 5}
+
+    logger.info(f"\nПараметры:\n\
+        URL: {load_params['url']}\n\
+        Chapters:{load_params['num_chapter_start']}-{load_params['num_chapter_end']}")
+
+    download_book_chapters(load_params)
+    logger.success('Окончание работы скрипта!')
