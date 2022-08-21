@@ -1,15 +1,18 @@
+from multiprocessing import reduction
+from urllib import request, response
 import requests
 from bs4 import BeautifulSoup
 from json import loads, dumps
 from time import sleep
 import re
-from typing import AnyStr
+from typing import AnyStr, List, Dict
 from loguru import logger
 import os
 
 
 # 'https://ранобэ.рф'
-URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/'}
+URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/',
+        'books': 'https://xn--80ac9aeh6f.xn--p1ai/books/'}
 URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
 URL = 'https://xn--80ac9aeh6f.xn--p1ai/ubegaya-ot-geroya'
 # URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov/glava-1-silyneyshaya-sistema-ubiystva-drakonov'
@@ -23,12 +26,18 @@ def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
     return data.get_text()
 
 
+def get_finding_tags_text(content: AnyStr, tag: str, attrs: dict) -> List:
+    """В сдержимом ищет нужный тег с аттрибутами и выводит его содержание"""
+    soup = BeautifulSoup(content, features='html.parser')
+    data = soup.find_all(name=tag, attrs=attrs)
+    return data
+
+
 @logger.catch(reraise=True)
 def get_book_json(content: AnyStr) -> dict:
     """Возвращает json, в котором хранится данные о книге, главах и много
     всего другого"""
 
-    logger.info('Парсинг данных о книге.')
     if content:
         book_data = get_finding_tag_text(content, 'script',
                                          attrs={'id': '__NEXT_DATA__'})
@@ -61,7 +70,7 @@ def get_parsing_url_dict(load_params: dict, chapters_json) -> dict:
     """Возвращает словарь url и доступности для просмотра выбранных глав.
 
        dict = {номер главы: {
-            'url': url, 
+            'url': url,
             'isaccessible': True|False - флаг того, имеется ли доступ к тексту главы
             }
         }
@@ -143,7 +152,7 @@ def get_chapters_text_dict(load_params: dict, book_json: dict) -> dict:
 
 
 @logger.catch(reraise=True)
-def get_chapters_file_name(load_params:dict , book_name: str) -> str:
+def get_chapters_file_name(load_params: dict, book_name: str) -> str:
     """Формирует название для файла с главами"""
 
     num_start = load_params['num_chapter_start']
@@ -179,7 +188,9 @@ def download_book_chapters(load_params: dict) -> None:
     logger.info('Получение данных о книге.')
     response = requests.get(url=load_params['url'])
     if response.status_code == 200:
+        logger.info('Парсинг данных о книге.')
         book_json = get_book_json(response.content)
+
         chapters_text_dict = get_chapters_text_dict(load_params, book_json)
         save_chapters_to_file(load_params, book_json, chapters_text_dict)
     else:
@@ -199,12 +210,74 @@ def initiate_logging() -> None:
     logger.add(f'{log_folder}/{log_file}')
 
 
+@logger.catch(reraise=True)
+def get_max_page(url: str) -> int:
+    """Возвращает номер последней страницы в пагинации"""
+
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code == 200:
+        pages_num_list = get_finding_tags_text(
+            response.content, 'a',
+            attrs={'class': 'h-11 w-11 flex items-center j'
+                            'ustify-center lg:cursor-pointer '
+                            'cursor-default'}
+        )
+        max_page = pages_num_list[-1].get_text()
+
+        return int(max_page)
+    raise Exception('Не получилось загрузить страницу /books')
+
+
+def get_all_books_url() -> dict:
+    '''Возвращает словарь всех книг на сайте.
+        dict = {название книги: url}'''
+
+    max_book_page = get_max_page(URLS['books'])
+    books_url = {}
+
+    logger.info('Начало просмотра всех книг.')
+    for num_page in range(1, max_book_page + 1):
+
+        response = requests.get(
+            URLS['books'], headers=HEADERS, params={'page': num_page})
+        if response.status_code == 200:
+            books_json = get_book_json(response.content)
+            for book in books_json['props']['pageProps']['totalData']['items']:
+                books_url[book['title']] = book['url']
+    return books_url
+
+
+def print_and_sort_books(books: dict) -> Dict:
+    """Выводит в консоль список всех книг"""
+    sorted_books = sorted(books.keys())
+    sorted_books_dict = {i: name for i, name in enumerate(sorted_books)}
+    print('***' * 10)
+    print('Список книг:')
+    for i in range(len(sorted_books_dict)):
+        print(f'{i}: "{sorted_books_dict[i]}"')
+
+    return sorted_books_dict
+
+
+def get_load_params() -> dict:
+    """Возвращает словарь с параметрами парсера,
+    которые определяют книгу и главы для парсинга."""
+
+    all_books_url_dict = get_all_books_url()
+    book_dict = print_and_sort_books(all_books_url_dict)
+    
+    num_book = int(input('Введите номер книги: '))
+    num_chapters = list(map(int, input('Введите \
+        диапазон глав через дефиз: ').split('-')))
+
+    return {'url': URLS['site'][:-1] + all_books_url_dict[book_dict[num_book]],
+            'num_chapter_start': num_chapters[0],
+            'num_chapter_end': num_chapters[1]}
+
+
 if __name__ == '__main__':
     initiate_logging()
-
-    load_params = {'url': URL,
-                   'num_chapter_start': 0,
-                   'num_chapter_end': 10}
+    load_params = get_load_params()
 
     logger.info(f"\nПараметры:\n\
         URL: {load_params['url']}\n\
