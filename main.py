@@ -26,7 +26,7 @@ def get_finding_tag_text(content: AnyStr, tag: str, attrs: dict) -> AnyStr:
     return data.get_text()
 
 
-def get_finding_tags_text(content: AnyStr, tag: str, attrs: dict) -> List:
+def get_finding_tags_text(content: AnyStr, tag: str, attrs: dict) -> list:
     """В сдержимом ищет нужный тег с аттрибутами и выводит его содержание"""
     soup = BeautifulSoup(content, features='html.parser')
     data = soup.find_all(name=tag, attrs=attrs)
@@ -121,15 +121,10 @@ def get_chapter_text(num_chapter: float, part_url: str) -> str:
             response.content, 'h1',
             attrs={'class': 'font-medium text-2xl md:text-3xl pb-3'}
         )
-        text = get_finding_tag_text(
-            response.content, 'div',
-            attrs={'class': 'overflow-hidden text-base leading-5 sm:text-lg '
-                            'content sm:leading-6 pb-6 prose text-justify '
-                            'max-w-none text-black-0 dark:text-[#aaa]'}
-        )
-
+        paragraph_list = [p.text for p in get_finding_tags_text(response.content, 'p',attrs={})]
+        text = '\n'.join(paragraph_list)
         if text:
-            return f'{title}\n{text}\n\n'
+            return f'{title}\n{text}\n\n\n'
     raise Exception(f'Не удалось загрузить страницу c главой {num_chapter}!\n'
                     f'URL:  {response.url}')
 
@@ -247,7 +242,7 @@ def get_all_books_url() -> dict:
     return books_url
 
 
-def print_and_sort_books(books: dict) -> Dict:
+def print_and_sort_books(books: dict) -> dict:
     """Выводит в консоль список всех книг"""
     sorted_books = sorted(books.keys())
     sorted_books_dict = {i: name for i, name in enumerate(sorted_books)}
