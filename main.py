@@ -2,20 +2,18 @@ from datetime import datetime
 import shutil
 import requests
 from bs4 import BeautifulSoup
-from json import loads, dumps
-from time import sleep
+from json import loads
 import re
 from typing import AnyStr
 from loguru import logger
 import os
+import asyncio
+import aiohttp
 
 
 # 'https://ранобэ.рф'
 URLS = {'site': 'https://xn--80ac9aeh6f.xn--p1ai/',
         'books': 'https://xn--80ac9aeh6f.xn--p1ai/books/'}
-URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov'
-URL = 'https://xn--80ac9aeh6f.xn--p1ai/ubegaya-ot-geroya'
-# URL = 'https://xn--80ac9aeh6f.xn--p1ai/silyneyshaya-sistema-ubiystva-drakonov/glava-1-silyneyshaya-sistema-ubiystva-drakonov'
 HEADERS = []
 LOGS = {'folder': 'logs',
         'last_launch': 'log_last_launch.log'}
@@ -132,23 +130,6 @@ def get_chapter_text(num_chapter: float, part_url: str) -> str:
                     f'URL:  {response.url}')
 
 
-def get_chapters_text_dict(load_params: dict, book_json: dict) -> dict:
-    """Парсит главы сайта по ссылкам из url_dict.
-        Возвращает словарь dict = {номер главы: текст главы}"""
-
-    logger.info('Начало парсинга глав.')
-    parsing_url_dict = get_parsing_url_dict(
-        load_params, book_json['props']['pageProps']['book']['chapters'])
-
-    chapters_text_dict = {}
-    for num_chapter in parsing_url_dict.keys():
-        chapters_text_dict[num_chapter] = get_chapter_text(
-            num_chapter, parsing_url_dict.get(num_chapter))
-        sleep(0.05)
-    logger.success('Конец парсинга глав.')
-    return chapters_text_dict
-
-
 @logger.catch(reraise=True)
 def get_chapters_file_name(load_params: dict, book_name: str) -> str:
     """Формирует название для файла с главами"""
@@ -187,6 +168,7 @@ def download_book_chapters(load_params: dict) -> None:
         конечной главы. Скачивает все главы в этом промежутке, включая
         конечную главу.
     """
+    from async_connection import get_chapters_text_dict
     logger.info('Получение данных о книге.')
     response = requests.get(url=load_params['url'])
     if response.status_code == 200:
@@ -233,15 +215,10 @@ def get_max_page(url: str) -> int:
     raise Exception('Не получилось загрузить страницу /books')
 
 
-def get_all_books_url() -> dict:
-    '''Возвращает словарь всех книг на сайте.
-        dict = {название книги: url}'''
+def get_all_books_name(max_page) -> dict:
 
-    max_book_page = get_max_page(URLS['books'])
     books_url = {}
-
-    logger.info('Начало просмотра всех книг.')
-    for num_page in range(1, max_book_page + 1):
+    for num_page in range(1, max_page + 1):
 
         response = requests.get(
             URLS['books'], headers=HEADERS, params={'page': num_page})
@@ -267,7 +244,7 @@ def print_and_sort_books(books: dict) -> dict:
 def get_load_params() -> dict:
     """Возвращает словарь с параметрами парсера,
     которые определяют книгу и главы для парсинга."""
-
+    from async_connection import get_all_books_url
     all_books_url_dict = get_all_books_url()
     book_dict = print_and_sort_books(all_books_url_dict)
 
@@ -295,10 +272,9 @@ def save_logs(book_name: str) -> None:
     )
 
 
-
 if __name__ == '__main__':
     initiate_logging()
-    load_params=get_load_params()
+    load_params = get_load_params()
 
     logger.info(f"\nПараметры:\n\
         URL: {load_params['url']}\n\
